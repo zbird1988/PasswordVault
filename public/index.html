@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>密盾 · 在线密码管理器</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div id="toast-container"></div>
+
+  <!-- 演示模式浮动面板 -->
+  <aside id="demo-panel" class="demo-panel" aria-label="演示模式">
+    <div class="demo-panel-header">
+      <span class="demo-badge">演示模式</span>
+      <button type="button" id="demo-toggle" class="btn-icon" title="折叠">−</button>
+    </div>
+    <div id="demo-body" class="demo-body">
+      <p class="demo-hint">OTP 验证码会显示在这里（无需真实短信/邮件）</p>
+      <div id="demo-otp-list" class="demo-otp-list">
+        <div class="empty-mini">暂无验证码</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 未登录视图 -->
+  <div id="view-auth" class="view">
+    <div class="auth-bg"></div>
+    <div class="auth-card card">
+      <div class="brand">
+        <div class="brand-icon">🔐</div>
+        <h1>密盾</h1>
+        <p class="subtitle">安全 · 加密 · 本地演示</p>
+      </div>
+      <div class="tabs">
+        <button type="button" class="tab active" data-tab="login">登录</button>
+        <button type="button" class="tab" data-tab="register">注册</button>
+        <button type="button" class="tab" data-tab="recover">找回密码</button>
+      </div>
+
+      <form id="form-login" class="auth-form">
+        <label>用户名
+          <input name="username" autocomplete="username" required minlength="3" placeholder="请输入用户名" />
+        </label>
+        <label>主密码
+          <input name="masterPassword" type="password" autocomplete="current-password" required minlength="8" placeholder="请输入主密码" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-block">登录保险库</button>
+      </form>
+
+      <form id="form-register" class="auth-form hidden">
+        <label>用户名
+          <input name="username" autocomplete="username" required minlength="3" placeholder="至少 3 个字符" />
+        </label>
+        <label>主密码
+          <input name="masterPassword" type="password" autocomplete="new-password" required minlength="8" placeholder="至少 8 个字符（请牢记）" />
+        </label>
+        <label>邮箱 <span class="optional">选填，与手机至少填一</span>
+          <input name="email" type="email" autocomplete="email" placeholder="name@example.com" />
+        </label>
+        <label>手机号 <span class="optional">选填，与邮箱至少填一</span>
+          <input name="phone" type="tel" autocomplete="tel" placeholder="11 位手机号" />
+        </label>
+        <button type="submit" class="btn btn-primary btn-block">创建账号</button>
+      </form>
+
+      <form id="form-recover" class="auth-form hidden">
+        <p class="form-note">通过标题找回条目密码。需验证主密码与 OTP。</p>
+        <label>用户名
+          <input name="username" required placeholder="您的用户名" />
+        </label>
+        <label>主密码
+          <input name="masterPassword" type="password" required minlength="8" placeholder="主密码" />
+        </label>
+        <label>条目标题
+          <input name="title" required placeholder="要找回的条目标题" />
+        </label>
+        <label>接收通道
+          <select name="channel">
+            <option value="email">邮箱</option>
+            <option value="phone">手机号</option>
+          </select>
+        </label>
+        <button type="submit" class="btn btn-primary btn-block">发送验证码</button>
+        <div id="recover-otp-step" class="hidden otp-step">
+          <label>验证码
+            <input name="otpCode" maxlength="6" placeholder="6 位验证码" />
+          </label>
+          <input type="hidden" name="otpId" />
+          <button type="button" id="btn-verify-guest" class="btn btn-accent btn-block">验证并揭示密码</button>
+        </div>
+        <div id="recover-result" class="hidden reveal-box"></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 已登录：保险库 -->
+  <div id="view-app" class="view hidden">
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="brand-mini">🔐 密盾</span>
+        <span id="user-label" class="user-label"></span>
+      </div>
+      <div class="topbar-actions">
+        <button type="button" id="btn-recovery-modal" class="btn btn-ghost">按标题找回</button>
+        <button type="button" id="btn-logout" class="btn btn-ghost">退出</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="toolbar card">
+        <div>
+          <h2>我的保险库</h2>
+          <p class="muted">密码经 AES-256-GCM 加密存储，服务端仅保存密文</p>
+        </div>
+        <button type="button" id="btn-new-entry" class="btn btn-primary">＋ 新建条目</button>
+      </section>
+
+      <section id="entry-list" class="entry-grid"></section>
+      <div id="empty-state" class="empty-state card hidden">
+        <div class="empty-icon">🗂️</div>
+        <h3>保险库是空的</h3>
+        <p>点击「新建条目」添加第一个密码</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- 新建/编辑对话框 -->
+  <dialog id="dialog-entry" class="modal">
+    <form id="form-entry" method="dialog">
+      <h3 id="entry-dialog-title">新建条目</h3>
+      <input type="hidden" name="id" />
+      <label>标题 *
+        <input name="title" required placeholder="例如：GitHub / 网银" />
+      </label>
+      <label>密码 *
+        <div class="input-row">
+          <input name="password" type="password" placeholder="条目密码" />
+          <button type="button" class="btn btn-ghost" id="btn-toggle-pw" tabindex="-1">显示</button>
+        </div>
+        <span class="field-hint" id="pw-hint">新建必填；编辑时留空表示不修改</span>
+      </label>
+      <label>用户名 <span class="optional">选填</span>
+        <input name="username" placeholder="登录用户名" />
+      </label>
+      <label>网址 <span class="optional">选填</span>
+        <input name="url" type="url" placeholder="https://" />
+      </label>
+      <label>备注 <span class="optional">选填</span>
+        <textarea name="notes" rows="3" placeholder="附加说明"></textarea>
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="btn-cancel-entry">取消</button>
+        <button type="submit" class="btn btn-primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 查看密码对话框 -->
+  <dialog id="dialog-view" class="modal">
+    <div class="modal-inner">
+      <h3 id="view-title">条目详情</h3>
+      <dl class="detail-list">
+        <dt>用户名</dt><dd id="view-username">—</dd>
+        <dt>网址</dt><dd id="view-url">—</dd>
+        <dt>密码</dt>
+        <dd class="pw-reveal">
+          <code id="view-password"></code>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-pw">复制</button>
+        </dd>
+        <dt>备注</dt><dd id="view-notes">—</dd>
+      </dl>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-primary" id="btn-close-view">关闭</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 删除确认 -->
+  <dialog id="dialog-confirm" class="modal">
+    <div class="modal-inner">
+      <h3>确认删除</h3>
+      <p id="confirm-text">确定删除该条目吗？此操作不可恢复。</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="btn-confirm-cancel">取消</button>
+        <button type="button" class="btn btn-danger" id="btn-confirm-ok">删除</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 登录态找回 -->
+  <dialog id="dialog-recovery" class="modal">
+    <form id="form-recovery-in" method="post">
+      <h3>按标题找回密码</h3>
+      <p class="form-note">验证码将发往您绑定的邮箱或手机（演示模式直接显示）</p>
+      <div id="recovery-bound-contacts" class="bound-contacts">
+        <div>已绑定邮箱：<strong id="recovery-masked-email">—</strong></div>
+        <div>已绑定手机：<strong id="recovery-masked-phone">—</strong></div>
+      </div>
+      <label>条目标题 *
+        <select name="title" id="recovery-title-select" required>
+          <option value="">请选择条目</option>
+        </select>
+      </label>
+      <label>接收通道
+        <select name="channel" id="recovery-channel">
+          <option value="email">邮箱</option>
+          <option value="phone">手机号</option>
+        </select>
+      </label>
+      <label>确认手机号/邮箱 <span class="optional">选填，需与所选通道绑定信息一致</span>
+        <input name="confirmContact" id="recovery-confirm-contact" type="text" placeholder="可选：输入完整手机号或邮箱以确认" autocomplete="off" />
+      </label>
+      <div id="in-recovery-error" class="form-error hidden" role="alert"></div>
+      <div id="in-otp-step" class="hidden otp-step">
+        <p id="in-otp-dest" class="form-note"></p>
+        <div id="in-demo-otp" class="demo-otp-box hidden" aria-live="polite"></div>
+        <label>验证码
+          <input name="otpCode" maxlength="6" placeholder="6 位验证码" autocomplete="one-time-code" />
+        </label>
+        <input type="hidden" name="otpId" />
+      </div>
+      <div id="in-recover-result" class="hidden reveal-box"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="btn-recovery-close">关闭</button>
+        <button type="submit" class="btn btn-primary" id="btn-recovery-send">发送验证码</button>
+        <button type="button" class="btn btn-accent hidden" id="btn-recovery-verify">验证并揭示</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
