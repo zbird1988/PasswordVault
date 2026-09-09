@@ -10,7 +10,7 @@ const { router: authRouter } = require('./routes/auth');
 const vaultRouter = require('./routes/vault');
 const recoveryRouter = require('./routes/recovery');
 
-const PORT = 3847;
+const PORT = Number(process.env.PORT) || 3847;
 const HOST = '0.0.0.0';
 
 async function main() {
@@ -33,7 +33,7 @@ async function main() {
       cookie: {
         httpOnly: true,
         sameSite: 'lax',
-        secure: false,
+        secure: process.env.NODE_ENV === 'production' || !!process.env.RENDER,
         maxAge: 8 * 60 * 60 * 1000,
       },
     })
